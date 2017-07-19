@@ -1,7 +1,7 @@
 package client
 
 import (
-	"fmt"
+	"authsynch/producer/logtypes"
 	"os"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -11,18 +11,19 @@ import (
 	Start to be able to connect to kafka as producer.
 	Call  to initiate client.
 */
-func Send(brokers []string, topic string, message string) {
+func Send(brokers string, topic string, message string) {
+	host, _ := os.Hostname()
 	producer, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers":    brokers,
-		"client.id":            os.Hostname,
+		"client.id":            host,
 		"default.topic.config": kafka.ConfigMap{"acks": "all"}})
 
 	if err != nil {
-		fmt.Printf("Failed to create producer: %s\n", err)
+		logtypes.Error.Printf("Failed to create producer: %s\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Created producer %v\n", producer)
+	logtypes.Info.Printf("Created producer %v\n", producer)
 
 	doneChannel := make(chan bool)
 
@@ -33,21 +34,20 @@ func Send(brokers []string, topic string, message string) {
 			case *kafka.Message:
 				m := ev
 				if m.TopicPartition.Error != nil {
-					fmt.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
+					logtypes.Error.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
 				} else {
-					fmt.Printf("Delivered message to topic %s [%d] at offset %v\n",
+					logtypes.Info.Printf("Delivered message to topic %s [%d] at offset %v\n",
 						*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 				}
 				break outer
 			default:
-				fmt.Printf("Ignored event: %s\n", ev)
+				logtypes.Info.Printf("Ignored event: %s\n", ev)
 			}
 		}
 		close(doneChannel)
 	}()
 
-	value := "Hello Go!"
-	producer.ProduceChannel() <- &kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny}, Value: []byte(value)}
+	producer.ProduceChannel() <- &kafka.Message{TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny}, Value: []byte(message)}
 
 	// wait for delivery report goroutine to finish
 	_ = <-doneChannel

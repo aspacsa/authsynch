@@ -3,7 +3,7 @@ Purpose:
 	Service to read data from flat files.
 	Files in multiple paths can be read concurrently.
 Usage:
-	<Microservice Name> <Name of file containing paths>
+	<Microservice Name> <Name of file containing paths> <brokers host1:9092,host2:9092> <Topic>
 Author:
 	Ernesto Rodriguez
 	aspacsa@gmail.com
@@ -11,7 +11,7 @@ Author:
 package main
 
 import (
-	//"authsynch/producer/client"
+	"authsynch/producer/client"
 	"authsynch/producer/logtypes"
 	"bufio"
 	"fmt"
@@ -45,9 +45,13 @@ func main() {
 	logtypes.Info.Printf("Micro Service: %s\n", progName)
 	totArgs := len(os.Args)
 	var fileName string
+	var brokers string
+	var topic string
 
 	if totArgs > 1 {
 		fileName = os.Args[1]
+		brokers = os.Args[2]
+		topic = os.Args[3]
 		if fileName == "" {
 			log.Fatalln("Must specify the name of file containing paths.")
 		}
@@ -64,7 +68,7 @@ func main() {
 	wg.Add(len(paths))
 	logtypes.Info.Println("Processing the following path(s):")
 	for _, path := range paths {
-		go process(path)
+		go process(path, brokers, topic)
 	}
 	wg.Wait()
 
@@ -105,9 +109,8 @@ func read(fileName string) (lines []string) {
 	if valid then we read all files in directory
 	reading each line in each one of them.
 */
-func process(spath string) {
+func process(spath string, brokers string, topic string) {
 	defer wg.Done()
-
 	logtypes.Info.Println(spath)
 	dir := path.Dir(spath)
 
@@ -116,9 +119,9 @@ func process(spath string) {
 		for _, file := range files {
 			fmt.Println(file)
 			for _, line := range read(file) {
-				fmt.Println(line)
+				//fmt.Println(line)
+				client.Send(brokers, topic, line)
 			}
-			//client.Send([]string{"localhost:9092"}, "test")
 		}
 	} else {
 		logtypes.Error.Printf("Invalid path '%s'.\n", dir)
