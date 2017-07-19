@@ -11,9 +11,10 @@ Author:
 package main
 
 import (
+	//"authsynch/producer/client"
+	"authsynch/producer/logtypes"
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path"
@@ -23,11 +24,7 @@ import (
 )
 
 var (
-	Trace   *log.Logger // Information that will be discarted
-	Info    *log.Logger // Important information
-	Warning *log.Logger // Be concerned
-	Error   *log.Logger // Critical problem
-	wg      sync.WaitGroup
+	wg sync.WaitGroup
 )
 
 /*
@@ -35,25 +32,22 @@ var (
 	Used for initialization only.
 */
 func init() {
-	fmt.Println("Initializing...")
-
-	Trace = log.New(ioutil.Discard, "TRACE: ", log.Ldate|log.Ltime|log.Lshortfile)
-	Info = log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	Warning = log.New(os.Stdout, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
-	Error = log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	logtypes.Info.Println("Initiating...")
 }
 
 /*
 	Entry point of the service.
+	Nothing fancy except that to be able to manage
+	multiple paths we are going to use concurrency.
 */
 func main() {
 	progName := os.Args[0]
-	fmt.Printf("Micro Service: %s\n", progName)
+	logtypes.Info.Printf("Micro Service: %s\n", progName)
 	totArgs := len(os.Args)
 	var fileName string
 
 	if totArgs > 1 {
-		fileName = os.Args[1] //Get name of paths file
+		fileName = os.Args[1]
 		if fileName == "" {
 			log.Fatalln("Must specify the name of file containing paths.")
 		}
@@ -65,20 +59,22 @@ func main() {
 	paths = read(fileName)
 
 	cpus := runtime.NumCPU()
-	fmt.Printf("Total CPUs: %d\n", cpus)
+	logtypes.Info.Printf("Total CPUs: %d\n", cpus)
 	runtime.GOMAXPROCS(cpus)
 	wg.Add(len(paths))
-	fmt.Println("Processing the following path(s):")
+	logtypes.Info.Println("Processing the following path(s):")
 	for _, path := range paths {
 		go process(path)
 	}
 	wg.Wait()
 
-	fmt.Println("Finished.")
+	logtypes.Info.Println("Finished.")
 }
 
 /*
 	Read data lines from each flat file in paths specified.
+	We will return all lines (from the file) to the caller
+	as it is, in other words no special formating will be performed.
 */
 func read(fileName string) (lines []string) {
 	file, err := os.Open(fileName)
@@ -96,7 +92,7 @@ func read(fileName string) (lines []string) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		Error.Println("Error scanning file.")
+		logtypes.Error.Println("Error scanning file.")
 	}
 	file.Close()
 
@@ -104,28 +100,27 @@ func read(fileName string) (lines []string) {
 }
 
 /*
-	Here we determine if the path to file is valid,
-	if valid then we read all files in directory and
-	read the lines in each one of them.
+	Here we determine if the path to file is valid to
+	avoid going to the wrong directory,
+	if valid then we read all files in directory
+	reading each line in each one of them.
 */
 func process(spath string) {
 	defer wg.Done()
 
-	Info.Println(spath)
+	logtypes.Info.Println(spath)
 	dir := path.Dir(spath)
 
 	if _, err := os.Stat(dir); err == nil {
 		files, _ := filepath.Glob(spath)
 		for _, file := range files {
 			fmt.Println(file)
-			var lines []string
-			lines = read(file)
-			lines = lines
-			//for _, line := range lines {
-			//fmt.Println(line)
-			//}
+			for _, line := range read(file) {
+				fmt.Println(line)
+			}
+			//client.Send([]string{"localhost:9092"}, "test")
 		}
 	} else {
-		Error.Printf("Invalid path '%s'.\n", dir)
+		logtypes.Error.Printf("Invalid path '%s'.\n", dir)
 	}
 }
