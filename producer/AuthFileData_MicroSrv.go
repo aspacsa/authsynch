@@ -11,7 +11,7 @@ Author:
 package main
 
 import (
-	"authsynch/producer/client"
+	//"authsynch/producer/client"
 	"authsynch/producer/logtypes"
 	"bufio"
 	"fmt"
@@ -20,6 +20,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 )
 
@@ -63,7 +64,6 @@ func main() {
 	paths = read(fileName)
 
 	cpus := runtime.NumCPU()
-	logtypes.Info.Printf("Total CPUs: %d\n", cpus)
 	runtime.GOMAXPROCS(cpus)
 	wg.Add(len(paths))
 	logtypes.Info.Println("Processing the following path(s):")
@@ -86,7 +86,7 @@ func read(fileName string) (lines []string) {
 		log.Fatalln("Failed to open file: ", err)
 	}
 
-	mylines := make([]string, 1)
+	mylines := make([]string, 0)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -117,13 +117,24 @@ func process(spath string, brokers string, topic string) {
 	if _, err := os.Stat(dir); err == nil {
 		files, _ := filepath.Glob(spath)
 		for _, file := range files {
-			fmt.Println(file)
-			for _, line := range read(file) {
-				//fmt.Println(line)
-				client.Send(brokers, topic, line)
+			//fname := filepath.Base(file)
+			var message string
+			for idx, line := range read(file) {
+				message += formatln(idx+1, &line)
 			}
+			message = formatmsg(filepath.Base(file), &message)
+			fmt.Println(message)
+			//client.Send(brokers, topic, line)
 		}
 	} else {
 		logtypes.Error.Printf("Invalid path '%s'.\n", dir)
 	}
+}
+
+func formatln(idx int, line *string) (newln string) {
+	return fmt.Sprintf(" {\"ID\":%s, \"Data\": \"%s\"}", strconv.Itoa(idx), *line)
+}
+
+func formatmsg(filename string, message *string) (newmsg string) {
+	return fmt.Sprintf("{\"%s\":[%s]}", filename, *message)
 }
