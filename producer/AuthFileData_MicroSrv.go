@@ -12,6 +12,7 @@ package main
 
 import (
 	//"authsynch/producer/client"
+	"authsynch/producer/client"
 	"authsynch/producer/logtypes"
 	"bufio"
 	"fmt"
@@ -28,6 +29,14 @@ var (
 	wg sync.WaitGroup
 )
 
+const (
+	minTotalArg int = 1
+	prognameArg int = 0
+	filenameArg int = 1
+	brokersArg  int = 2
+	topicArg    int = 3
+)
+
 /*
 	First function to be called.
 	Used for initialization only.
@@ -42,15 +51,13 @@ func init() {
 	multiple paths we are going to use concurrency.
 */
 func main() {
-	logtypes.Info.Printf("Micro Service: %s\n", os.Args[0])
-	var fileName string
-	var brokers string
-	var topic string
+	logtypes.Info.Printf("Micro Service: %s\n", os.Args[prognameArg])
+	var fileName, brokers, topic string
 
-	if len(os.Args) > 1 {
-		fileName = os.Args[1]
-		brokers = os.Args[2]
-		topic = os.Args[3]
+	if len(os.Args) > minTotalArg {
+		fileName = os.Args[filenameArg]
+		brokers = os.Args[brokersArg]
+		topic = os.Args[topicArg]
 		if fileName == "" {
 			log.Fatalln("Must specify the name of file containing paths.")
 		}
@@ -58,23 +65,25 @@ func main() {
 		log.Fatalln(fmt.Sprintf("Usage: %s <name of file containing paths>, <broker1,broker2>, <topic>", os.Args[0]))
 	}
 
+	srv := client.Server{Brokers: brokers, Topic: topic}
 	paths := read(fileName)
-
-	start(&paths, brokers, topic)
-
+	start(&paths, &srv)
 	logtypes.Info.Println("Finished.")
 }
 
 /*
 	Here we launch a series of goroutines to process
 	all paths containing the targeted files to read from.
+	First step is to configure the client to be able to talk
+	to the broker and then configure goroutines to do the
+	processing.
 */
-func start(paths *[]string, brokers string, topic string) {
+func start(paths *[]string, server *client.Server) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	wg.Add(len(*paths))
 	logtypes.Info.Println("Processing the following path(s):")
 	for _, path := range *paths {
-		go process(path, brokers, topic)
+		go process(path, server)
 	}
 	wg.Wait()
 }
@@ -85,7 +94,7 @@ func start(paths *[]string, brokers string, topic string) {
 	if valid then we read all files in directory
 	reading each line in each one of them.
 */
-func process(spath string, brokers string, topic string) {
+func process(spath string, server *client.Server) {
 	defer wg.Done()
 	logtypes.Info.Println(spath)
 	dir := path.Dir(spath)
@@ -95,9 +104,9 @@ func process(spath string, brokers string, topic string) {
 		for _, file := range files {
 			for idx, line := range read(file) {
 				message := formatmsg(formatln(filepath.Base(file), idx+1, &line))
-				fmt.Println(*message)
+				//fmt.Println(*message)
+				client.Send(server, *message)
 			}
-			//client.Send(brokers, topic, line)
 		}
 	} else {
 		logtypes.Error.Printf("Invalid path '%s'.\n", dir)
